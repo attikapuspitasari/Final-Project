@@ -1,0 +1,56 @@
+6. Source Code Motor Servo.
+
+#include <Servo.h>
+//define servos
+Servo servo1;
+Servo servo2;
+Servo servo3;
+Servo servo4;
+Servo servo5;
+//servo position in degrees
+int angle = 0;
+int i;
+void setup()
+{
+ //communication between MATLAB and Arduino using BaudRate 9600
+ //define servo signal inputs (digital PWM)
+ servo1.attach(3);
+ servo2.attach(5);
+ servo3.attach(6);
+ servo4.attach(9);
+ servo5.attach(10);
+
+ Serial.begin(9600);
+}
+void loop() {
+
+ i = Serial.read();
+ if(i==1)
+ {
+ for(angle = 0; angle < 180; angle++)
+ {
+ servo1.write(angle);
+ servo2.write(angle);
+ servo3.write(angle);
+ servo4.write(angle);
+ servo5.write(angle);
+
+ delay(50);
+ }
+ Serial.write(2);
+ }
+ else if(i==0)
+ {
+ for(angle = 180; angle > 0; angle--)
+ {
+ servo1.write(angle);
+ servo2.write(angle);
+ servo3.write(angle);
+ servo4.write(angle);
+ servo5.write(angle);
+
+ delay(50);
+ }
+ Serial.write(2);
+}
+ }
