@@ -1,0 +1,228 @@
+1. Source Code untuk Sinyal Hasil Akuisisi (sebelum resampling).
+
+%Sinyal yang diakuisisi pada Audacity di tampilkan pada MATLAB
+[x1,fs] = audioread('Data/Latih Fleksi/F1.wav');
+limitx=fs*5; %dibatasi durasinya menjadi 5 detik
+X1=x1(1:limitx,1);
+durasi=length(X1)/fs;
+freq_persample=fs/length(x1);
+ts = 1/fs; %periode sampling
+N = length(X1);
+time = N*ts;
+t = 0:ts:time-ts;
+f0 = fs/N;
+
+%Raw EMG Signal
+figure
+plot(t,X1);
+title('Raw EMG Signal');
+xlabel('Time (s)'),ylabel('Magnitude (mV)');
+ylim([-1 1]);
+xlim([0 time]);
+
+%frequency spectrum of the Raw EMG signal
+EMGF = fft(X1);
+figure
+plot(f0*(0:N-1),abs(EMGF));
+title('Frequency Spectrum of the Raw EMG Signal');
+xlabel('Frequency (Hz)'),ylabel('Energy');
+xlim([0 500]);
+
+2. Source Code Pengolahan Sinyal.
+
+%membaca file yang diakuisisi
+[x1,fs] = audioread('Data/Latih Fleksi/F1.wav');
+limitx=fs*5; %dibatasi durasinya 5 detik
+X1=x1(1:limitx,1);
+durasi=length(X1)/fs;
+freq_persample=fs/length(x1);
+ts = 1/fs; %periode sampling
+S1 = resample(X1,1000,fs); %sinyal di downsampling sampai
+frekuensi samplingnya 1000 Hz
+N1 = length(S1); %length of signal
+fs1 = fs/8;
+ts1 = ts*8;
+time = N1*ts1;
+t = 0:ts1:time-ts1;
+f1 = (fs/8)/N1; %frekuensi per sampel
+
+% Raw EMG Signal
+figure
+plot(t,S1);
+title('Raw EMG Signal');
+xlabel('Time(s)'),ylabel('Magnitude(mV)');
+ylim([-1 1]);
+xlim([0 time]);
+
+% Frequency spectrum of the Raw EMG signal
+EMGF = fft(S1);
+figure
+plot(f1*(0:N1-1),abs(EMGF));
+title('Frequency Spectrum of the Raw EMG Signal');
+xlabel('Frequency(Hz)'),ylabel('Energy');
+xlim([0 500]);
+
+% Bandpass filter
+cb=4;
+ca=150;
+[y,x]=butter(4,[cb*2/fs1 ca*2/fs1]); %digunakan BPF pada
+rentang 4-150 Hz
+EMGF1 = filter(y,x,S1);
+figure
+plot(t,EMGF1);
+title('Filtered EMG Signal(4 Hz to 150 Hz)');
+xlabel('Time(s)'),ylabel('Magnitude(mV)');
+ylim([-1.5 1.5]);
+xlim([0 time]);
+
+% Frequency Spectrum of the Filtered EMG Signal
+EMGF2 = fft(EMGF1);
+figure
+plot(f1*(0:N1-1),abs(EMGF2));
+title('Frequency Spectrum of the Filtered EMG Signal');
+xlabel('Frequency(Hz)'),ylabel('Energy');
+xlim([0 500]);
+
+% Envelope Detection
+fc = 150; %frekuensi cutoff LPF
+[a,b]=butter(4,fc/(fs1/2));%filter butterworth untuk orde 4 dan
+Wn = 0.3
+sig_sq=2*EMGF1.*EMGF1;% sinyal yang telah difilter kemudian di
+kuadratkan dan dikali 2 untuk menjaga energi sinyal
+y_sq = filter(a,b,sig_sq);
+y1 = abs(sqrt(y_sq));%memperoleh nilai akar kuadrat
+figure
+plot(t,y1);
+title('Envelope Detection LPF Method');
+xlabel('Time(s)'),ylabel('Magnitude(mV)');
+
+% Ekstraksi ciri statistik (domain waktu)
+meant=mean(y1);
+stdt=std(y1);
+kurtt=kurtosis(y1);
+skewt=skewness(y1);
+entt=entropy(y1);
+ciriwaktu=[meant stdt kurtt skewt entt];
+
+3. Source Code k-NN dan Komunikasi Serial MATLAB dengan Arduino.
+
+% Inisialisasi untuk komunikasi serial MATLAB dengan Arduino
+Instrreset
+x=serial('COM4','BAUD', 9600); %mengatur komunikasi dengan
+alamat port COM4 dengan baudrate 9600
+a=0
+fopen(x); %untuk membuka port COM4
+fwrite(x,0); %kondisi awal 0
+
+% K-Nearest Neighbor
+%data train
+train_data = xlsread('Data Latih1.xlsx','Sheet1','A1:E200');
+%label dari data train
+labels = xlsread('Data Latih1.xlsx','Sheet1','F1:F200');
+%data test
+test_data = xlsread('Data Uji1.xlsx','Sheet1','A80:E80');
+
+%mengurangi data train dengan data test
+subt = train_data - test_data;
+%mengkuadratkan hasil pengurangan data train dengan data test
+square = ((subt).^2);
+%menghitung jumlah elemen di setiap baris
+add = sum(square,2);
+%menghitung euclidean distance
+ed = sqrt(add);
+
+%mengurutkan secara ascending nilai hasil ed dan urutan sampel
+yang terdekat dengan data uji
+[B,I] = sort(ed);
+%menamplikan index yang berada pada urutan ke 1 sampai ke K
+%ditentukan nilai K = 3
+predict_index = I(1:3);
+%menamplikan label yang berada pada urutan ke 1 sampai ke K
+predict_label = labels(predict_index);
+
+%memprediksi kelas pada data uji
+result = mode(predict_label);
+fprintf('Kelas Prediksi = %d\n',result);
+while a<1
+fwrite(x,result); %mengirimkan nilai result ke Arduino
+i=fscanf(x)
+if (i==2)
+ a=a+1
+end
+end
+
+4. Source Code Confusion Matrix
+
+%kelas sebenarnya
+expected = xlsread('Data Uji.xlsx','Sheet2','F1:F120');
+%kelas prediksi
+predicted = xlsread('Data Uji.xlsx','Sheet2','H1:H120');
+
+idx = (expected()==1);
+p = length(expected(idx));
+n = length(expected(~idx));
+N = p+n;
+
+%true positive
+tp = sum(expected(idx) == predicted(idx));
+%true negative
+tn = sum(expected(~idx) == predicted(~idx));
+%false positive
+fp = n-tn;
+%false negative
+fn = p-tp;
+
+%akurasi
+ accuracy =((tp+tn)/(tp+tn+fp+fn)*100);
+ fprintf('Accuracy = %d%%\n',accuracy);
+%presisi
+ precission = ((tp)/(tp+fp)*100);
+ fprintf('Precission = %d%%\n',precission);
+%sensitivitas
+ recall = ((tp)/(tp+fn)*100);
+ fprintf('Sensitivity = %d%%\n',recall);
+ %specifisitas
+ specificity = ((tn)/(tn+fp)*100);
+ fprintf('Specificity = %d%%\n',specificity);
+
+5. Source Code Box Plot
+
+% Box plot untuk nilai mean
+Ax = xlsread('Data Latih1.xlsx','Sheet1','A1:A100');
+Ay = xlsread('Data Latih1.xlsx','Sheet1','A101:A200');
+Az = boxplot([Ax,Ay],'Labels',{'Fleksi','Ekstensi'});
+title('Mean');
+xlabel('Kelas');
+ylabel('Nilai');
+
+% Box plot untuk nilai standar deviasi
+Ax = xlsread('Data Latih1.xlsx','Sheet1','B1:B100');
+Ay = xlsread('Data Latih1.xlsx','Sheet1','B101:B200');
+Az = boxplot([Ax,Ay],'Labels',{'Fleksi','Ekstensi'});
+title('Standar Deviasi');
+xlabel('Kelas');
+ylabel('Nilai');
+
+% Box plot untuk nilai kurtosis
+Ax = xlsread('Data Latih1.xlsx','Sheet1','C1:C100');
+Ay = xlsread('Data Latih1.xlsx','Sheet1','C101:C200');
+Az = boxplot([Ax,Ay],'Labels',{'Fleksi','Ekstensi'});
+title('Kurtosis');
+xlabel('Kelas');
+ylabel('Nilai');
+
+% Box plot untuk nilai skewness
+Ax = xlsread('Data Latih1.xlsx','Sheet1','D1:D100');
+Ay = xlsread('Data Latih1.xlsx','Sheet1','D101:D200');
+Az = boxplot([Ax,Ay],'Labels',{'Fleksi','Ekstensi'});
+title('Skewness');
+xlabel('Kelas');
+ylabel('Nilai');
+
+% Box plot untuk nilai entropy
+Ax = xlsread('Data Latih1.xlsx','Sheet1','E1:E100');
+Ay = xlsread('Data Latih1.xlsx','Sheet1','E101:E200');
+Az = boxplot([Ax,Ay],'Labels',{'Fleksi','Ekstensi'});
+title('Entropy');
+xlabel('Kelas');
+ylabel('Nilai');
